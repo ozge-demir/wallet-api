@@ -1,0 +1,24 @@
+# Java / Gradle / IntelliJ
+/build/
+.gradle/
+out/
+!.gradle/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# H2 file db (if you ever switch from mem)
+*.mv.db
+*.trace.db
+
+# Logs
+logs/
+*.log
+
+# Env / secrets
+.env
+.env.*

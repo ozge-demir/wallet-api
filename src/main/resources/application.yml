@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:walletdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: sa
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+jwt:
+  secret: "bV3q2y7kK2Zx1mZr8HJyPqZfU5t9Wc3sQ6d8r0a2f4g6h8j0l2n4p6r8t0v2x4z6"
+  issuer: "wallet-api"
+  expiration-minutes: 120

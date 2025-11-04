@@ -40,7 +40,7 @@ java -jar build/libs/wallet-api-*.jar
 
 - DB: H2 (in-memory)
 - JDBC URL: jdbc:h2:mem:walletdb
-- User: sa (no password) Password: sa
+- User: sa Password: sa
 - Console: http://localhost:8080/h2
 (Set JDBC URL to jdbc:h2:mem:walletdb)
 

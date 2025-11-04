@@ -27,7 +27,7 @@ public class TransactionService {
         this.wallets = wallets; this.txs = txs;
     }
 
-    // ---------- DEPOSIT ----------
+    // DEPOSIT
     @Transactional
     public TransactionResponse deposit(DepositRequest req) {
         Wallet w = wallets.findById(req.walletId())
@@ -43,42 +43,40 @@ public class TransactionService {
         tx.setOppositeParty(req.source());
         tx.setStatus(pending ? TransactionStatus.PENDING : TransactionStatus.APPROVED);
 
-        // bakiye yansımaları
+        // balance updates
         if (pending) {
-            // sadece balance artar
+            // only balance increases
             w.setBalance(w.getBalance().add(req.amount()));
         } else {
-            // balance + usableBalance artar
+            // both balance and usableBalance increase
             w.setBalance(w.getBalance().add(req.amount()));
             w.setUsableBalance(w.getUsableBalance().add(req.amount()));
         }
 
-        // persist
+        // persist transaction (Wallet will be updated via JPA dirty checking)
         Transaction saved = txs.save(tx);
-        // Wallet JPA dirty checking ile güncellenecek
 
         return map(saved);
     }
 
-    // ---------- LIST ----------
+    // LIST
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> list(Long walletId,
-                                          Pageable p) {
+    public Page<TransactionResponse> list(Long walletId, Pageable p) {
         return txs.findByWalletId(walletId, p).map(this::map);
     }
 
-    // ---------- APPROVE/DENY ----------
+    // APPROVE/DENY
     @Transactional
     public TransactionResponse approve(Long txId, ApproveRequest req) {
         Transaction tx = txs.findById(txId)
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found"));
 
-        // Yalnızca APPROVED/DENIED kabul et
+        // Only ACCEPT APPROVED/DENIED
         if (req.status() == TransactionStatus.PENDING) {
             throw new IllegalArgumentException("status must be APPROVED or DENIED");
         }
 
-        // Zaten finalize ise 409
+        // If already finalized, return 409
         if (tx.getStatus() != TransactionStatus.PENDING) {
             throw new IllegalStateException("Transaction is already finalized");
         }
@@ -88,19 +86,19 @@ public class TransactionService {
         switch (tx.getType()) {
             case DEPOSIT -> {
                 if (req.status() == TransactionStatus.APPROVED) {
-                    // pending deposit -> usableBalance + amount (balance zaten + yapılmıştı)
+                    // pending deposit -> add to usableBalance (balance was already increased)
                     w.setUsableBalance(w.getUsableBalance().add(tx.getAmount()));
                 } else { // DENIED
-                    // pending deposit reddi -> balance - amount (eklenen geri alınır)
+                    // deny pending deposit -> subtract from balance (revert the earlier increase)
                     w.setBalance(w.getBalance().subtract(tx.getAmount()));
                 }
             }
             case WITHDRAW -> {
                 if (req.status() == TransactionStatus.APPROVED) {
-                    // pending withdraw onayı -> balance - amount (usable zaten - yapılmıştı)
+                    // approve pending withdraw -> subtract from balance (usable was already reserved)
                     w.setBalance(w.getBalance().subtract(tx.getAmount()));
                 } else { // DENIED
-                    // pending withdraw reddi -> usableBalance + amount (rezerv iade)
+                    // deny pending withdraw -> add back to usableBalance (release reservation)
                     w.setUsableBalance(w.getUsableBalance().add(tx.getAmount()));
                 }
             }
@@ -113,14 +111,13 @@ public class TransactionService {
         return map(tx);
     }
 
-
-    // ---------- WITHDRAW ----------
+    // WITHDRAW
     @Transactional
     public TransactionResponse withdraw(WithdrawRequest req) {
         Wallet w = wallets.findById(req.walletId())
                 .orElseThrow(() -> new EntityNotFoundException("Wallet not found"));
 
-        // Ayar kontrolleri (oppositePartyType'a göre)
+        // Feature flags depending on oppositePartyType
         switch (req.oppositePartyType()) {
             case PAYMENT -> {
                 if (!w.isActiveForShopping()) {
@@ -134,24 +131,24 @@ public class TransactionService {
             }
         }
 
-        // Yeterli usable balance kontrolü (hem rezerv hem direkt çekim için gerekli)
+        // Sufficient usable balance check (required for both reservation and instant withdraw)
         if (w.getUsableBalance().compareTo(req.amount()) < 0) {
             throw new IllegalStateException("Insufficient usable balance");
         }
 
         boolean pending = req.amount().compareTo(THRESHOLD) > 0;
 
-        // Bakiye yansımaları
+        // balance updates
         if (pending) {
-            // sadece usableBalance'dan rezerv düş
+            // for pending: reserve only from usableBalance
             w.setUsableBalance(w.getUsableBalance().subtract(req.amount()));
         } else {
-            // onaylı çekim: usableBalance ve balance'dan düş
+            // for approved: subtract from both usableBalance and balance
             w.setUsableBalance(w.getUsableBalance().subtract(req.amount()));
             w.setBalance(w.getBalance().subtract(req.amount()));
         }
 
-        // Transaction kaydı
+        // persist transaction
         Transaction tx = new Transaction();
         tx.setWallet(w);
         tx.setType(TransactionType.WITHDRAW);
@@ -177,5 +174,4 @@ public class TransactionService {
                 t.getCreatedAt()
         );
     }
-
 }

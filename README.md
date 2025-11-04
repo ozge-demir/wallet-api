@@ -91,20 +91,20 @@ curl -s -X POST http://localhost:8080/api/v1/transactions/deposits \
 ```
 
 ### 4) Withdraw
-```bash
+```curl
 curl -s -X POST http://localhost:8080/api/v1/transactions/withdrawals \
 -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 -d '{"walletId":1,"amount":400,"oppositePartyType":"PAYMENT","destination":"PAY123"}' | jq
 ```
 
 ### 5) List transactions
-```bash
+```curl
 curl -s "http://localhost:8080/api/v1/transactions?walletId=1" \
 -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 ### 6) Approve/Deny (example id=5)
-```bash
+```curl
 curl -s -X POST "http://localhost:8080/api/v1/transactions/5/approve" \
 -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 -d '{"status":"APPROVED"}' | jq
@@ -118,22 +118,63 @@ curl -s -X POST "http://localhost:8080/api/v1/transactions/5/approve" \
 ---
 
 ## Run all tests
-```bash
+```curl
 ./gradlew test
 ```
 
 ### Clean then run tests (fresh build)
-```bash
+```curl
 ./gradlew clean test
 ```
 
 ### Run a specific test class 
-```bash
+```curl
 ./gradlew test --tests "com.ozgedemir.wallet.service.TransactionServiceTest"
 ```
 
 ### Run a single test method
-```bash
+```curl
 ./gradlew test --tests "com.ozgedemir.wallet.service.TransactionServiceTest.withdraw_shouldFail_when_withdrawDisabled"
 
+```
+
+## Nice To Have Feature
+
+### Idempotent Requests
+
+#### Why
+Network hiccups and client retries can cause duplicate writes (double deposits, double withdrawals). Idempotency guarantees that replaying the same request will not create additional side-effects.
+
+#### How it would work in this project
+
+- Clients send a unique `Idempotency-Key` header with every write request (create/deposit/withdraw/approve).
+- The server stores `(idempotency_key, endpoint)` in the `idempotent_requests` table.
+- If the **same** (Idempotency-Key + endpoint) arrives again, the server does not perform the action again and returns the original result.
+- Keys are scoped per endpoint (the same key can be used on different endpoints).
+- Use something globally unique (UUID v4) as the key.
+- Best practice: retries should keep the exact same request body. If the body changes with the same key, the server should reject (409 Conflict).
+
+#### Where required
+
+`POST /api/v1/transactions/deposits`  (required)
+
+`POST /api/v1/transactions/withdrawals` (required)
+
+`POST /api/v1/transactions/{id}/approve` (required)
+
+`POST /api/v1/wallets` (optional)
+
+Example (safe retry for deposit)
+
+```curl
+curl -s -X POST http://localhost:8080/api/v1/transactions/deposits \
+-H "Authorization: Bearer <JWT>" \
+-H "Content-Type: application/json" \
+-H "Idempotency-Key: 5b7a3c5f-7a2a-4e4e-9a8c-9b0b5b1ff0f1" \
+-d '{
+"walletId": 1,
+"amount": 950.00,
+"oppositePartyType": "IBAN",
+"source": "TR1200"
+}'
 ```
